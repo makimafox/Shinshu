@@ -1,0 +1,4 @@
+Checks: '-*,bugprone-*,clang-analyzer-*,cppcoreguidelines-*,performance-*,portability-*,readability-*'
+WarningsAsErrors: ''
+HeaderFilterRegex: 'include/nmc/.*'
+FormatStyle: file

@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: vcpkg.json
+          runVcpkgInstall: true
+      - uses: seanmiddleditch/gha-setup-ninja@v5
+      - uses: llvm/actions/setup-clang-format@v2
+        if: runner.os == 'Linux'
+      - name: Set up build environment
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang-tidy
+      - name: Configure Debug
+        shell: bash
+        run: cmake --preset debug -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+      - name: Build Debug
+        run: cmake --build --preset debug
+      - name: Test Debug
+        run: ctest --preset debug
+      - name: Configure Release
+        shell: bash
+        run: cmake --preset release -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+      - name: Build Release
+        run: cmake --build --preset release
+      - name: Test Release
+        run: ctest --preset release
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        shell: bash
+        run: find include src tests -type f \( -name '*.cpp' -o -name '*.hpp' \) -print0 | xargs -0 clang-format --dry-run --Werror
+      - name: Run clang-tidy
+        if: runner.os == 'Linux'
+        run: clang-tidy -p build/debug src/core/version.cpp src/cli/arguments.cpp src/cli/main.cpp
