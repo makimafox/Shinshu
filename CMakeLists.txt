@@ -14,9 +14,27 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(cmake/CompilerWarnings.cmake)
 include(cmake/Sanitizers.cmake)
 
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE SHINSHU_GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT SHINSHU_GIT_COMMIT)
+    set(SHINSHU_GIT_COMMIT "unknown")
+endif()
+
 add_library(shinshu_core
     src/core/version.cpp
+    src/core/sha256.cpp
     src/cli/arguments.cpp
+    src/data/generator.cpp
+    src/data/corpus.cpp
+    src/data/codec.cpp
+    src/data/roundtrip.cpp
+    src/data/report.cpp
+    src/data/commands.cpp
 )
 add_library(shinshu::core ALIAS shinshu_core)
 target_include_directories(shinshu_core PUBLIC
@@ -24,6 +42,11 @@ target_include_directories(shinshu_core PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 target_compile_definitions(shinshu_core PUBLIC SHINSHU_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(shinshu_core PRIVATE
+    SHINSHU_GIT_COMMIT="${SHINSHU_GIT_COMMIT}"
+    SHINSHU_BUILD_CONFIG="$<CONFIG>"
+    SHINSHU_COMPILER_ID="${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}"
+)
 shinshu_set_warnings(shinshu_core)
 shinshu_enable_sanitizers(shinshu_core)
 
@@ -41,6 +64,17 @@ target_link_libraries(shinshu_entropy INTERFACE shinshu_core)
 target_link_libraries(shinshu_format INTERFACE shinshu_core)
 target_link_libraries(shinshu_neural INTERFACE shinshu_core)
 
+find_package(nlohmann_json 3.11 CONFIG QUIET)
+if(NOT TARGET nlohmann_json::nlohmann_json)
+    find_path(SHINSHU_NLOHMANN_INCLUDE_DIR nlohmann/json.hpp REQUIRED)
+    add_library(shinshu_json INTERFACE)
+    target_include_directories(shinshu_json INTERFACE "${SHINSHU_NLOHMANN_INCLUDE_DIR}")
+    add_library(shinshu::json ALIAS shinshu_json)
+else()
+    add_library(shinshu::json ALIAS nlohmann_json::nlohmann_json)
+endif()
+target_link_libraries(shinshu_core PRIVATE shinshu::json)
+
 add_executable(shinshu_cli src/cli/main.cpp)
 set_target_properties(shinshu_cli PROPERTIES OUTPUT_NAME shinshu)
 target_link_libraries(shinshu_cli PRIVATE shinshu::core)
@@ -51,8 +85,7 @@ if(SHINSHU_BUILD_TESTS)
     include(CTest)
     enable_testing()
 
-    # CLI contract tests stay dependency-free; GoogleTest is available through
-    # vcpkg for future unit-level suites and is used when present.
+    # CLI contract tests stay dependency-free; GoogleTest runs unit suites when present.
     add_test(NAME cli_help COMMAND shinshu_cli --help)
     add_test(NAME cli_version COMMAND shinshu_cli --version)
     add_test(NAME cli_rejects_unknown_option COMMAND shinshu_cli --unknown)
@@ -60,10 +93,11 @@ if(SHINSHU_BUILD_TESTS)
     add_test(NAME cli_reports_unimplemented_command COMMAND shinshu_cli compress input.bin -o output.shinshu)
     set_tests_properties(cli_reports_unimplemented_command PROPERTIES WILL_FAIL TRUE)
 
-    find_package(GTest 1.14 CONFIG QUIET)
+    find_package(GTest 1.11 CONFIG QUIET)
     if(GTest_FOUND)
         add_executable(shinshu_tests tests/unit/api_tests.cpp)
-        target_link_libraries(shinshu_tests PRIVATE shinshu::core GTest::gtest_main)
+        target_link_libraries(shinshu_tests PRIVATE shinshu::core shinshu::json GTest::gtest_main)
+        set_property(TARGET shinshu_tests PROPERTY BUILD_RPATH "$<TARGET_FILE_DIR:GTest::gtest>")
         shinshu_set_warnings(shinshu_tests)
         shinshu_enable_sanitizers(shinshu_tests)
         include(GoogleTest)

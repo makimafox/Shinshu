@@ -7,20 +7,25 @@ exactly. This is a research hypothesis; no compression results are claimed.
 
 ## Architecture
 
-The CLI and small core are buildable today. Public interfaces outline future
-compressor, decompressor, model, entropy coder, and file-format boundaries.
-See [Architecture](docs/ARCHITECTURE.md) and [Research Plan](docs/RESEARCH_PLAN.md).
+The project contains deterministic synthetic data, integrity gates, and an
+identity-only round-trip pipeline. Real codec and neural backends remain
+unimplemented. See [Architecture](docs/ARCHITECTURE.md),
+[Data Pipeline](docs/DATA_PIPELINE.md),
+[Generated Corpus](docs/GENERATED_CORPUS.md), and
+[Compression Test Contract](docs/COMPRESSION_TEST_CONTRACT.md).
 
 ## Prerequisites
 
 - CMake 3.25 or newer
 - C++20 compiler (Clang recommended; GCC and MSVC configurations are supported)
 - Ninja for the supplied presets
-- vcpkg in manifest mode for GoogleTest (`VCPKG_ROOT` points to its checkout)
+- vcpkg in manifest mode for GoogleTest and nlohmann-json (`VCPKG_ROOT` points
+  to its checkout)
 - clang-format and clang-tidy for the corresponding quality checks
 
-The initial project does not install LibTorch, Eigen, CUDA, ONNX Runtime, or
-Google Benchmark. GoogleTest is its only declared package dependency.
+The project does not install LibTorch, Eigen, CUDA, ONNX Runtime, or Google
+Benchmark. GoogleTest supports unit tests; nlohmann-json handles the versioned
+manifest and report files.
 
 ## Configure and build
 
@@ -35,7 +40,9 @@ For optimized builds, substitute `release` for `debug`. The `debug-sanitizers`
 preset enables AddressSanitizer and UndefinedBehaviorSanitizer with Clang or
 GCC. CMake exports `compile_commands.json` into each build directory.
 
-On systems without vcpkg, configure with tests' dependency-free CLI contracts:
+Without vcpkg, provide installed GoogleTest and nlohmann-json headers/CMake
+packages. The build can discover nlohmann-json from its header path; tests are
+enabled when GoogleTest 1.11 or newer is discoverable.
 
 ```sh
 cmake -S . -B build/local -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug
@@ -58,19 +65,27 @@ shinshu compress input.bin -o output.shinshu
 shinshu decompress input.shinshu -o restored.bin
 shinshu verify output.shinshu
 shinshu benchmark input.bin
+shinshu data generate --all
+shinshu data generate --profile pseudorandom --size 65536
+shinshu data validate
+shinshu data list
+shinshu data summary
+shinshu test roundtrip --codec identity
+shinshu test report
 ```
 
-Help and version work. The other commands validate their argument shapes, then
-return a nonzero `not implemented` error. They do not read or write files.
+The `data` commands generate and validate synthetic data in the current working
+directory. Identity round trips validate pipeline behavior and are marked
+`INFRASTRUCTURE_ONLY`. gzip, xz, zstd, and neural backends are reported as not
+implemented. No compression performance is claimed.
 
 ## Status and phases
 
-Implemented: C++20 CMake project, CLI help/version/argument validation,
-dependency-free CTest contracts, optional GoogleTest API tests, format and
-research interface declarations, sanitizer and lint configuration.
+Implemented: C++20 data profiles, edge-case files, deterministic manifest,
+SHA-256 validation, corpus gates, identity round trips, JSON/CSV reports,
+CLI argument handling, GoogleTest coverage, sanitizer and lint configuration.
 
-Planned: define a versioned binary format; implement safe conventional codec
-baselines and deterministic round-trip tests; establish a dataset and resource
-budget protocol; then implement and compare experiments A, B, and C. The
-interface declarations do not imply that compression or neural inference is
-functional.
+Planned: implement safe real codec adapters and malformed-stream tests, then
+define neural experiment formats and compare experiments A, B, and C on this
+generated corpus. The identity adapter is test infrastructure and provides no
+compression.
